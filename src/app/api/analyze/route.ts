@@ -5,12 +5,11 @@ export async function POST(req: Request) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, message: "GEMINI_API_KEY missing in .env.local file" },
+        { success: false, message: "GEMINI_API_KEY missing in Environment Variables" },
         { status: 500 }
       );
     }
 
-    // 1. Get uploaded file from Request
     const formData = await req.formData();
     const file = formData.get("resume") as File;
 
@@ -21,10 +20,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Extract text from PDF
+    // PDF Parsing
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const pdfParse = (await import("pdf-parse")).default;
+    
+    // Dynamic import to prevent build-time evaluation
+    const pdfParse = require("pdf-parse/lib/pdf-parse.js");
     const pdfData = await pdfParse(buffer);
     const resumeText = pdfData.text;
 
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Dynamic Model Discovery (Prevents 404 Not Found)
+    // Dynamic Google Gemini Model API Discovery
     const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
     const listRes = await fetch(listUrl);
     const listData = await listRes.json();
@@ -44,14 +45,13 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Google API rejected API key. Please generate a new key in Google AI Studio.",
+          message: "Google API rejected key. Verify GEMINI_API_KEY on Vercel.",
           error: listData,
         },
         { status: 401 }
       );
     }
 
-    // Extract models supported by your account/key
     const availableModels = listData.models
       ?.filter((m: any) => m.supportedGenerationMethods?.includes("generateContent"))
       ?.map((m: any) => m.name.replace("models/", "")) || [];
@@ -80,7 +80,6 @@ ${resumeText}`;
     let parsedData = null;
     let usedModel = "";
 
-    // 4. Try request on active models sequentially
     for (const modelName of availableModels) {
       const generateUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
